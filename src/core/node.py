@@ -7,15 +7,17 @@ from src.core.transform import (
     get_translation_matrix,
     get_rotation_matrix_x,
     get_rotation_matrix_y,
-    get_rotation_matrix_z
+    get_rotation_matrix_z,
 )
 
+
 class Node:
-    def __init__(self,
-                name: str,
-                offset: Tuple[float, float, float] = (0.0, 0.0, 0.0),
-                parent: Optional[Node] = None,
-                limits: Optional[Dict[str, Tuple[float, float]]] = None
+    def __init__(
+        self,
+        name: str,
+        offset: Tuple[float, float, float] = (0.0, 0.0, 0.0),
+        parent: Optional[Node] = None,
+        limits: Optional[Dict[str, Tuple[float, float]]] = None,
     ) -> None:
         """
         Args:
@@ -36,9 +38,9 @@ class Node:
             self.constraints = limits
         else:
             self.constraints = {
-                'x': (-180.0, 180.0),
-                'y': (-180.0, 180.0),
-                'z': (-180.0, 180.0)
+                "x": (-180.0, 180.0),
+                "y": (-180.0, 180.0),
+                "z": (-180.0, 180.0),
             }
 
         self.local_matrix: Mat4x4 = np.eye(4, dtype=np.float32)
@@ -58,7 +60,9 @@ class Node:
         Rz = get_rotation_matrix_z(self.rotation[2])
 
         R_local: Mat4x4 = Rz @ Ry @ Rx
-        T_local = get_translation_matrix(float(self.offset[0]), float(self.offset[1]), float(self.offset[2]))
+        T_local = get_translation_matrix(
+            float(self.offset[0]), float(self.offset[1]), float(self.offset[2])
+        )
         self.local_matrix = T_local @ R_local
 
         if self.parent:
@@ -86,9 +90,15 @@ class Node:
         """
         Enforces the joint limits.
         """
-        self.rotation[0] = np.clip(self.rotation[0], self.constraints['x'][0], self.constraints['x'][1])
-        self.rotation[1] = np.clip(self.rotation[1], self.constraints['y'][0], self.constraints['y'][1])
-        self.rotation[2] = np.clip(self.rotation[2], self.constraints['z'][0], self.constraints['z'][1])
+        self.rotation[0] = np.clip(
+            self.rotation[0], self.constraints["x"][0], self.constraints["x"][1]
+        )
+        self.rotation[1] = np.clip(
+            self.rotation[1], self.constraints["y"][0], self.constraints["y"][1]
+        )
+        self.rotation[2] = np.clip(
+            self.rotation[2], self.constraints["z"][0], self.constraints["z"][1]
+        )
 
     def reset(self) -> None:
         """

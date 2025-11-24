@@ -5,24 +5,28 @@ from typing import List
 from src.core.skeleton import Skeleton
 from src.core.node import Node
 
+
 class JacobianIK:
-    def __init__(self, 
-                damping: float = 0.1, 
-                step_size: float = 0.5, 
-                max_iterations: int = 10,
-                threshold: float = 0.1
+    def __init__(
+        self,
+        damping: float = 0.1,
+        step_size: float = 0.5,
+        max_iterations: int = 10,
+        threshold: float = 0.1,
     ) -> None:
         self.damping = damping
         self.step_size = step_size
         self.max_iterations = max_iterations
         self.threshold = threshold
 
-    def solve(self, skeleton: Skeleton, effector_name: str, target_pos: NDArray[np.float32]) -> bool:
+    def solve(
+        self, skeleton: Skeleton, effector_name: str, target_pos: NDArray[np.float32]
+    ) -> bool:
         """
         Main IK Loop. Modifies the skeleton's joints in-place.
         Returns: True if target reached, False otherwise
         """
-        chain = skeleton.get_chain(effector_name)
+        chain = skeleton.get_chain_anchored(effector_name)
         if not chain:
             print(f"ERROR: Effector name {effector_name} not found!")
             return False
@@ -32,26 +36,53 @@ class JacobianIK:
         for _ in range(self.max_iterations):
             current_pos = end_effector.get_global_position()
             error_vector = target_pos - current_pos
-            
+
             if np.sum(error_vector**2) < (self.threshold**2):
                 return True
 
             J = self._compute_jacobian(chain, current_pos)
-            J_J_T = J @ J.T
-            damping_matrix = (self.damping ** 2) * np.eye(3)
+
+            # Build inverse weight matrix (W^-1) for localized movement
+            # Higher value = more movement allowed
+            weights = []
+            for node in chain:
+                w = 1.0
+                name = node.name.lower()
+                if "root" in name or "spine" in name:
+                    w = 0.1  # Very stiff
+                elif "hip" in name:
+                    w = 0.2  # Stiff
+                elif "shoulder" in name or "knee" in name:
+                    w = 0.5  # Moderate
+                elif "elbow" in name or "ankle" in name:
+                    w = 0.8  # Flexible
+                # Wrist, Hand, Foot, Head default to 1.0 (Very Flexible)
+                
+                weights.extend([w, w, w])
+            
+            W_inv = np.diag(weights)
+
+            # Weighted DLS: dTheta = W^-1 * J^T * (J * W^-1 * J^T + lambda^2 * I)^-1 * e
+            # A = J * W^-1 * J^T
+            J_weighted = J @ W_inv
+            A = J_weighted @ J.T
+            
+            damping_matrix = (self.damping**2) * np.eye(3)
 
             try:
-                inverse_term = np.linalg.inv(J_J_T + damping_matrix)
+                inverse_term = np.linalg.inv(A + damping_matrix)
             except np.linalg.LinAlgError:
                 return False
 
-            delta_theta = J.T @ inverse_term @ error_vector
+            delta_theta = W_inv @ J.T @ inverse_term @ error_vector
             self._apply_deltas(chain, delta_theta)
             skeleton.update()
 
         return False
 
-    def _compute_jacobian(self, chain: List[Node], effector_pos: NDArray[np.float32]) -> NDArray[np.float32]:
+    def _compute_jacobian(
+        self, chain: List[Node], effector_pos: NDArray[np.float32]
+    ) -> NDArray[np.float32]:
         """
         Constructs the Jacobian matrix.
         """
@@ -82,7 +113,9 @@ class JacobianIK:
 
         return J
 
-    def _apply_deltas(self, chain: List[Node], delta_theta: NDArray[np.float32]) -> None:
+    def _apply_deltas(
+        self, chain: List[Node], delta_theta: NDArray[np.float32]
+    ) -> None:
         """
         Maps the flat delta_theta vector back to specific joints.
         """
