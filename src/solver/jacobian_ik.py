@@ -1,10 +1,9 @@
 import numpy as np
 from numpy.typing import NDArray
-from typing import List, Tuple
+from typing import List
 
 from src.core.skeleton import Skeleton
 from src.core.node import Node
-from src.core.transform import Mat4x4
 
 class JacobianIK:
     def __init__(self, 

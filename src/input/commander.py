@@ -1,9 +1,7 @@
-# Parses text (ex. "Raise Hand" to Vector3)
 import re
 import numpy as np
-from typing import Tuple, Optional, Dict, List
+from typing import Optional
 from src.core.skeleton import Skeleton
-from src.core.node import Node
 
 class CommandResult:
     """
@@ -51,54 +49,54 @@ class Commander:
             "backward": np.array([0, 0, -1], dtype=np.float32)
         }
 
-        def parse(self, command_text: str):
-            text = command_text.lower().strip()
-            if text == "reset":
-                self.skeleton.reset_pose()
-                return CommandResult(True, "Skeleton reset to default pose.")
-            
-            target_joint_name = None
+    def parse(self, command_text: str):
+        text = command_text.lower().strip()
+        if text == "reset":
+            self.skeleton.reset_pose()
+            return CommandResult(True, "Skeleton reset to default pose.")
+        
+        target_joint_name = None
 
-            sorted_aliases = sorted(self.part_aliases.keys(), key=len, reverse=True)
-            for alias in sorted_aliases:
-                if alias in text:
-                    target_joint_name = self.part_aliases[alias]
-                    break
+        sorted_aliases = sorted(self.part_aliases.keys(), key=len, reverse=True)
+        for alias in sorted_aliases:
+            if alias in text:
+                target_joint_name = self.part_aliases[alias]
+                break
 
-            if not target_joint_name:
-                return CommandResult(False, "Could not identify a valid body part!")
+        if not target_joint_name:
+            return CommandResult(False, "Could not identify a valid body part!")
 
-            node = self.skeleton.get_joint(target_joint_name)
-            if not node:
-                return CommandResult(False, f"Joint '{target_joint_name}' not found in skeleton!")
+        node = self.skeleton.get_joint(target_joint_name)
+        if not node:
+            return CommandResult(False, f"Joint '{target_joint_name}' not found in skeleton!")
 
-            direction_vector = np.array([0, 0, 0], dtype=np.float32)
+        direction_vector = np.array([0, 0, 0], dtype=np.float32)
 
-            found_action = False
-            for keyword, vector in self.direction_map.items():
-                if keyword in text:
-                    direction_vector = vector
-                    found_action = True
-                    break
+        found_action = False
+        for keyword, vector in self.direction_map.items():
+            if keyword in text:
+                direction_vector = vector
+                found_action = True
+                break
 
-            if not found_action:
-                return CommandResult(False, "Could not understand action!")
+        if not found_action:
+            return CommandResult(False, "Could not understand action!")
 
-            amount = 2.0
-            numbers = re.findall(r"[-+]?\d*\.\d+|\d+")
-            if numbers:
-                try:
-                    ammount = float(numbers[-1])
-                except ValueError:
-                    pass
+        amount = 2.0
+        numbers = re.findall(r"[-+]?\d*\.\d+|\d+", text)
+        if numbers:
+            try:
+                amount = float(numbers[-1])
+            except ValueError:
+                pass
 
-            current_pos = node.get_global_position()
-            displacement = direction_vector * amount
-            target_pos = current_pos + displacement
+        current_pos = node.get_global_position()
+        displacement = direction_vector * amount
+        target_pos = current_pos + displacement
 
-            return CommandResult(
-                success=True,
-                message=f"Moving {target_joint_name}...",
-                effector_name=target_joint_name,
-                target_pos=target_pos
-            )
+        return CommandResult(
+            success=True,
+            message=f"Moving {target_joint_name}...",
+            effector_name=target_joint_name,
+            target_pos=target_pos
+        )

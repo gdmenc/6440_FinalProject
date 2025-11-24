@@ -1,8 +1,6 @@
-# Base class for joints and bones
-from typing import Optional
 from __future__ import annotations
-from numpy.typing import NDArray
 from typing import List, Optional, Dict, Tuple
+from numpy.typing import NDArray
 import numpy as np
 from src.core.transform import (
     Mat4x4,

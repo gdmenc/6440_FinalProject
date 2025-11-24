@@ -1,7 +1,5 @@
 # Helper functions for Euler/Quaternion/Matrix math
 import numpy as np
-import math
-
 from numpy.typing import NDArray
 
 Mat4x4 = NDArray[np.float32]

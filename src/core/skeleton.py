@@ -13,11 +13,11 @@ class Skeleton:
             root: The base Node of the character (usually waist or pelvis)
         """
         self.root: Node = root
-        self.joints_map: Dict[str, None] = {}
+        self.joints_map: Dict[str, Node] = {}
         self.joints_list: List[Node] = []
         self._index_joints(self.root)
 
-    def _index_joints(self, node: None) -> None:
+    def _index_joints(self, node: Node) -> None:
         """
         Recursive helper to populate joints_map and joints_list.
         """
@@ -37,7 +37,7 @@ class Skeleton:
     def get_joint(self, name: str) -> Optional[Node]:
         """
         Retrieves a joint by name.
-        Returns one if the joint does not exist.
+        Returns None if the joint does not exist.
         """
         return self.joints_map.get(name)
 
