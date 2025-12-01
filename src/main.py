@@ -4,14 +4,165 @@ from OpenGL.GL import *
 from OpenGL.GLU import *
 import numpy as np
 import sys
+from pathlib import Path
+
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
 
 from src.core.node import Node
 from src.core.skeleton import Skeleton
 from src.solver.jacobian_ik import JacobianIK
 from src.input.commander import Commander
+from src.renderer import SkeletonRenderer
+from src.motion.controller import WalkMotion
 
 WINDOW_SIZE = (1024, 768)
 FPS = 60
+
+# Help text content
+HELP_TEXT = """
+╔══════════════════════════════════════════════════════════════╗
+║                    HUMANOID IK COMMANDER                     ║
+║                      Press F1 to close                       ║
+╠══════════════════════════════════════════════════════════════╣
+║  MOTION COMMANDS (type and press Enter)                      ║
+║  ─────────────────────────────────────                       ║
+║  walk              Start walking animation                   ║
+║  walk fast         Walk at 1.8x speed                        ║
+║  walk slow         Walk at 0.5x speed                        ║
+║  walk <number>     Walk at custom speed (e.g., walk 1.5)     ║
+║  stop              Stop current animation                    ║
+║  reset             Reset skeleton to default pose            ║
+╠══════════════════════════════════════════════════════════════╣
+║  IK COMMANDS (type and press Enter)                          ║
+║  ─────────────────────────────────────                       ║
+║  <body part> <direction> [distance]                          ║
+║                                                              ║
+║  Body Parts:                                                 ║
+║    right/left hand, wrist, elbow, shoulder                   ║
+║    right/left foot, ankle, knee, hip                         ║
+║    head, neck, chest, torso, spine                           ║
+║                                                              ║
+║  Directions:                                                 ║
+║    up, down, left, right, forward, back                      ║
+║    (also: raise, lift, lower, drop, backward)                ║
+║                                                              ║
+║  Examples:                                                   ║
+║    right hand up 5                                           ║
+║    left foot forward 3                                       ║
+║    head left                                                 ║
+╠══════════════════════════════════════════════════════════════╣
+║  CAMERA CONTROLS                                             ║
+║  ─────────────────────────────────────                       ║
+║  Left Mouse Drag   Rotate camera                             ║
+║  Mouse Wheel       Zoom in/out                               ║
+║  Arrow Keys        Pan camera                                ║
+║  Ctrl+R            Reset camera                              ║
+║  Ctrl+V            Toggle wireframe/capsule view             ║
+║  F1                Toggle this help screen                   ║
+╚══════════════════════════════════════════════════════════════╝
+"""
+
+
+def surface_to_texture(surface):
+    """
+    Convert a pygame surface to an OpenGL texture.
+    Returns texture ID, width, height.
+    """
+    texture_data = pygame.image.tostring(surface, "RGBA", True)
+    width, height = surface.get_size()
+    
+    texture_id = glGenTextures(1)
+    glBindTexture(GL_TEXTURE_2D, texture_id)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
+    
+    return texture_id, width, height
+
+
+def draw_textured_quad(texture_id, x, y, width, height):
+    """
+    Draw a textured quad at the given position.
+    """
+    glEnable(GL_TEXTURE_2D)
+    glEnable(GL_BLEND)
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+    glBindTexture(GL_TEXTURE_2D, texture_id)
+    
+    glBegin(GL_QUADS)
+    glTexCoord2f(0, 0); glVertex2f(x, y + height)
+    glTexCoord2f(1, 0); glVertex2f(x + width, y + height)
+    glTexCoord2f(1, 1); glVertex2f(x + width, y)
+    glTexCoord2f(0, 1); glVertex2f(x, y)
+    glEnd()
+    
+    glDisable(GL_TEXTURE_2D)
+    glDisable(GL_BLEND)
+
+
+def draw_help_overlay():
+    """
+    Renders the help overlay on top of the OpenGL scene.
+    """
+    overlay = pygame.Surface(WINDOW_SIZE, pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 200))  # Dark semi-transparent background
+    
+    lines = HELP_TEXT.strip().split('\n')
+    y_offset = 60
+    line_height = 15
+    
+    help_font = pygame.font.SysFont("Consolas", 14)
+    
+    for line in lines:
+        if '═' in line or '║' in line or '╔' in line or '╗' in line or '╚' in line or '╝' in line or '╠' in line or '╣' in line:
+            color = (100, 180, 255)  # Blue for borders
+        elif 'HUMANOID IK COMMANDER' in line or 'MOTION COMMANDS' in line or 'IK COMMANDS' in line or 'CAMERA CONTROLS' in line:
+            color = (255, 220, 100)  # Yellow for headers
+        elif line.strip().startswith('─'):
+            color = (100, 180, 255)  # Blue for dividers
+        elif any(cmd in line for cmd in ['walk', 'stop', 'reset', 'right', 'left', 'Ctrl+', 'F1', 'Mouse', 'Arrow']):
+            color = (150, 255, 150)  # Green for commands
+        else:
+            color = (220, 220, 220)  # Light gray for regular text
+        
+        text_surface = help_font.render(line, True, color)
+        x_offset = (WINDOW_SIZE[0] - text_surface.get_width()) // 2
+        overlay.blit(text_surface, (x_offset, y_offset))
+        y_offset += line_height
+    
+    hint_font = pygame.font.SysFont("Consolas", 12)
+    hint = hint_font.render("Type 'help' or press F1 to toggle this screen", True, (150, 150, 150))
+    overlay.blit(hint, ((WINDOW_SIZE[0] - hint.get_width()) // 2, WINDOW_SIZE[1] - 40))
+    
+    texture_id, width, height = surface_to_texture(overlay)
+    draw_textured_quad(texture_id, 0, 0, width, height)
+    glDeleteTextures([texture_id])
+
+
+def draw_status_bar(font, input_text, status_text, show_help_hint=True):
+    """
+    Renders the status bar at the bottom of the screen.
+    """
+    bar_height = 30
+    bar_surface = pygame.Surface((WINDOW_SIZE[0], bar_height), pygame.SRCALPHA)
+    bar_surface.fill((30, 30, 40, 230))
+    
+    input_display = f"> {input_text}_"
+    input_surface = font.render(input_display, True, (255, 255, 255))
+    bar_surface.blit(input_surface, (10, 5))
+    
+    status_surface = font.render(status_text, True, (180, 180, 180))
+    bar_surface.blit(status_surface, (300, 5))
+    
+    if show_help_hint:
+        hint_font = pygame.font.SysFont("Consolas", 12)
+        hint = hint_font.render("F1: Help", True, (100, 150, 200))
+        bar_surface.blit(hint, (WINDOW_SIZE[0] - 80, 8))
+    
+    texture_id, width, height = surface_to_texture(bar_surface)
+    draw_textured_quad(texture_id, 0, WINDOW_SIZE[1] - bar_height, width, height)
+    glDeleteTextures([texture_id])
 
 
 def draw_grid():
@@ -80,14 +231,117 @@ def draw_node_recursive(node):
         draw_node_recursive(child)
 
 
+def draw_sphere(position, radius, color=(0.8, 0.6, 0.4)):
+    """
+    Draws a sphere at the given position.
+    """
+    glPushMatrix()
+    glTranslatef(position[0], position[1], position[2])
+    glColor3f(*color)
+
+    quadric = gluNewQuadric()
+    gluQuadricNormals(quadric, GLU_SMOOTH)
+    gluSphere(quadric, radius, 16, 16)
+    gluDeleteQuadric(quadric)
+
+    glPopMatrix()
+
+
+def draw_cylinder_between(start_pos, end_pos, radius, color=(0.8, 0.6, 0.4)):
+    """
+    Draws a cylinder between two points.
+    """
+    glPushMatrix()
+
+    glTranslatef(start_pos[0], start_pos[1], start_pos[2])
+    direction = end_pos - start_pos
+    length = np.linalg.norm(direction)
+
+    if length > 1e-3:
+        direction = direction / length
+        z_axis = np.array([0, 0, 1], dtype=np.float32)
+        axis = np.cross(z_axis, direction)
+        axis_len = np.linalg.norm(axis)
+
+        if axis_len > 1e-3:
+            axis /= axis_len
+            angle = np.degrees(np.arccos(np.clip(np.dot(z_axis, direction))))
+            glRotatef(angle, axis[0], axis[1], axis[2])
+
+        elif np.dot(z_axis, direction) < 0:
+            glRotatef(180, 1, 0, 0)
+
+    glColor3f(*color)
+    quadric = gluNewQuadric()
+    gluQuadricNormals(quadric, GLU_SMOOTH)
+    gluCylinder(quadric, radius, radius, length, 16, 1)
+    gluDeleteQuadric(quadric)
+
+    glPopMatrix()
+
+
+def get_body_part_color(node_name):
+    name = node_name.lower()
+    if "head" in name or "neck" in name:
+        return (0.95, 0.8, 0.7)
+    if "spine" in name or "chest" in name or "root" in name:
+        return (0.85, 0.65, 0.5)
+    if "r_" in name and any(part in name for part in ("shoulder", "elbow", "wrist", "hand")):
+        return (0.7, 0.75, 0.9)
+    if "l_" in name and any(part in name for part in ("shoulder", "elbow", "wrist", "hand")):
+        return (0.9, 0.7, 0.75)
+    if "r_" in name and any(part in name for part in ("hip", "knee", "ankle", "foot")):
+        return (0.6, 0.65, 0.85)
+    if "l_" in name and any(part in name for part in ("hip", "knee", "ankle", "foot")):
+        return (0.85, 0.6, 0.65)
+    return (0.8, 0.6, 0.4)
+
+
+def get_joint_radius(node_name):
+    name = node_name.lower()
+    if "head" in name:
+        return 0.7
+    if "neck" in name:
+        return 0.4
+    if "chest" in name or "spine2" in name:
+        return 0.6
+    if "spine" in name or "root" in name:
+        return 0.5
+    if "shoulder" in name or "hip" in name:
+        return 0.4
+    if "elbow" in name or "knee" in name:
+        return 0.3
+    if "wrist" in name or "ankle" in name:
+        return 0.25
+    if "hand" in name or "foot" in name:
+        return 0.2
+    return 0.3
+
+
+def draw_node_capsule(node):
+    """
+    Recursively draws bones as capsules.
+    """
+    color = get_body_part_color(node)
+    joint_radius = get_joint_radius(node.name)
+
+    draw_sphere(node.world_position, joint_radius, color)
+
+    if node.parent:
+        parent_radius = get_joint_radius(node.parent)
+        bone_radius = (joint_radius + parent_radius) / 3.0
+        draw_cylinder_between(node.parent.world_position, node.world_position, bone_radius, color)
+
+    for child in node.children:
+        draw_node_capsule(child)
+
+
 def setup_scene():
     """
     Builds the Humanoid Skeleton with full body structure.
     """
-    # Root/Pelvis - Lifted so feet are on the ground
     root = Node("Root", offset=(0, 5.7, 0))
 
-    # Spine chain (multiple segments for flexibility)
     _spine1 = Node(
         "Spine1",
         offset=(0, 1.0, 0),
@@ -109,7 +363,6 @@ def setup_scene():
         limits={"x": (-15, 15), "y": (-30, 30), "z": (-15, 15)},
     )
 
-    # Neck and Head
     _neck = Node(
         "Neck",
         offset=(0, 0.8, 0),
@@ -119,7 +372,6 @@ def setup_scene():
 
     _head = Node("Head", offset=(0, 0.6, 0), parent=_neck)
 
-    # Right arm chain
     _r_shoulder = Node(
         "R_Shoulder",
         offset=(-1.2, 0.5, 0),
@@ -143,7 +395,6 @@ def setup_scene():
 
     _r_hand = Node("R_Hand", offset=(-0.8, 0, 0), parent=_r_wrist)
 
-    # Left arm chain
     _l_shoulder = Node(
         "L_Shoulder",
         offset=(1.2, 0.5, 0),
@@ -167,7 +418,6 @@ def setup_scene():
 
     _l_hand = Node("L_Hand", offset=(0.8, 0, 0), parent=_l_wrist)
 
-    # Right leg chain
     _r_hip = Node(
         "R_Hip",
         offset=(-0.6, -0.2, 0),
@@ -191,7 +441,6 @@ def setup_scene():
 
     _r_foot = Node("R_Foot", offset=(0, -0.5, 0.8), parent=_r_ankle)
 
-    # Left leg chain
     _l_hip = Node(
         "L_Hip",
         offset=(0.6, -0.2, 0),
@@ -222,54 +471,57 @@ def setup_scene():
 def main():
     """
     Main application loop for the Humanoid IK Commander.
-
-    Controls:
-    - Type commands and press Enter to move limbs
-    - Left Mouse Drag: Rotate camera
-    - Mouse Wheel: Zoom in/out
-    - Arrow Keys: Pan camera
-    - Ctrl+R: Reset camera
+    
+    Press F1 or type 'help' for the full command reference.
     """
-    # Initialize Pygame and OpenGL
     pygame.init()
     screen = pygame.display.set_mode(WINDOW_SIZE, DOUBLEBUF | OPENGL)
     pygame.display.set_caption("Humanoid IK Commander")
 
     glEnable(GL_DEPTH_TEST)
 
-    # Setup Projection Matrix
+    glEnable(GL_LIGHTING)
+    glEnable(GL_LIGHT0)
+    glEnable(GL_COLOR_MATERIAL)
+    glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE)
+    
+    light_position = [10.0, 10.0, 10.0, 1.0]
+    light_ambient = [0.3, 0.3, 0.3, 1.0]
+    light_diffuse = [0.8, 0.8, 0.8, 1.0]
+    glLightfv(GL_LIGHT0, GL_POSITION, light_position)
+    glLightfv(GL_LIGHT0, GL_AMBIENT, light_ambient)
+    glLightfv(GL_LIGHT0, GL_DIFFUSE, light_diffuse)
+
     glMatrixMode(GL_PROJECTION)
     glLoadIdentity()
     gluPerspective(45, (WINDOW_SIZE[0] / WINDOW_SIZE[1]), 0.1, 100.0)
     
-    # Switch back to ModelView for camera/object transforms
     glMatrixMode(GL_MODELVIEW)
     glLoadIdentity()
 
-    # Camera state (adjusted for full-body view)
     camera_distance = 30.0
     camera_rotation_x = 10.0
     camera_rotation_y = 0.0
     camera_pan_x = 0.0
-    camera_pan_y = -5.0  # Look up at the torso (approx Y=5)
+    camera_pan_y = -5.0
 
-    # Mouse control state
     mouse_dragging = False
     last_mouse_pos = (0, 0)
 
-    # Initialize scene components
     skeleton = setup_scene()
     skeleton.reset_pose()  # Set initial standing pose
     solver = JacobianIK(damping=0.5, step_size=0.05, max_iterations=5, threshold=0.1)
     commander = Commander(skeleton)
+    renderer = SkeletonRenderer()
     font = pygame.font.SysFont("Consolas", 24)
+    
+    walk_motion = WalkMotion(skeleton, speed=1.0)
 
-    # Application state
     running = True
     user_text = ""
-    last_status = "Ready - Use mouse/arrows to move camera"
+    last_status = "Ready - Press F1 for help"
+    show_help = False  # Help overlay toggle
 
-    # IK solver state
     active_effector = None
     active_target_pos = None
 
@@ -281,19 +533,51 @@ def main():
                 running = False
 
             elif event.type == pygame.KEYDOWN:
-                # Process text command
                 if event.key == pygame.K_RETURN:
-                    result = commander.parse(user_text)
-                    last_status = result.message
+                    cmd_lower = user_text.lower().strip()
+                    
+                    if cmd_lower == "help":
+                        show_help = not show_help
+                        user_text = ""
+                        continue
+                    
+                    elif cmd_lower == "walk":
+                        walk_motion.start()
+                        active_effector = None
+                        active_target_pos = None
+                        last_status = "Walking animation started"
+                    elif cmd_lower == "stop":
+                        walk_motion.stop()
+                        last_status = "Animation stopped"
+                    elif cmd_lower.startswith("walk "):
+                        speed_str = cmd_lower[5:].strip()
+                        if speed_str == "fast":
+                            walk_motion.set_speed(1.8)
+                        elif speed_str == "slow":
+                            walk_motion.set_speed(0.5)
+                        else:
+                            try:
+                                walk_motion.set_speed(float(speed_str))
+                            except ValueError:
+                                pass
+                        walk_motion.start()
+                        active_effector = None
+                        active_target_pos = None
+                        last_status = f"Walking at speed {walk_motion.speed:.1f}x"
+                    else:
+                        result = commander.parse(user_text)
+                        last_status = result.message
+
+                        if result.success and result.effector_name:
+                            walk_motion.pause()
+                            active_effector = result.effector_name
+                            active_target_pos = result.target_pos
+
+                            if result.message == "Skeleton reset to default pose.":
+                                active_effector = None
+                                active_target_pos = None
+                    
                     user_text = ""
-
-                    if result.success and result.effector_name:
-                        active_effector = result.effector_name
-                        active_target_pos = result.target_pos
-
-                        if result.message == "Skeleton reset to default pose.":
-                            active_effector = None
-                            active_target_pos = None
 
                 elif event.key == pygame.K_BACKSPACE:
                     user_text = user_text[:-1]
@@ -318,6 +602,17 @@ def main():
                     camera_pan_x = 0.0
                     camera_pan_y = -5.0
                     last_status = "Camera reset"
+
+                # Toggle visualization mode with Ctrl+V
+                elif (
+                    event.key == pygame.K_v and pygame.key.get_mods() & pygame.KMOD_CTRL
+                ):
+                    mode = renderer.toggle_mode()
+                    last_status = f"Visualization: {mode.capitalize()}"
+
+                # Toggle help overlay with F1
+                elif event.key == pygame.K_F1:
+                    show_help = not show_help
 
                 else:
                     user_text += event.unicode
@@ -353,29 +648,51 @@ def main():
                 camera_distance -= event.y * 2.0
                 camera_distance = np.clip(camera_distance, 5.0, 100.0)
 
-        # Update skeleton forward kinematics
-        skeleton.update()
+        dt = clock.get_time() / 1000.0
+        
+        if walk_motion.is_active():
+            walk_motion.update(dt)
+        else:
+            skeleton.update()
 
-        # Run IK solver if active
-        if active_effector and active_target_pos is not None:
-            solver.solve(skeleton, active_effector, active_target_pos)
+            if active_effector and active_target_pos is not None:
+                solver.solve(skeleton, active_effector, active_target_pos)
 
-        # Clear buffers and reset transformations
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         glLoadIdentity()
 
-        # Apply camera transformations
         glTranslatef(camera_pan_x, camera_pan_y, -camera_distance)
         glRotatef(camera_rotation_x, 1, 0, 0)
         glRotatef(camera_rotation_y, 0, 1, 0)
 
-        # Draw scene
+        glDisable(GL_LIGHTING)
         draw_grid()
-        draw_node_recursive(skeleton.root)
         draw_target(active_target_pos)
+        
+        renderer.render(skeleton.root)
 
-        # Update display
-        pygame.display.set_caption(f"Input: {user_text} | {last_status}")
+        glMatrixMode(GL_PROJECTION)
+        glPushMatrix()
+        glLoadIdentity()
+        glOrtho(0, WINDOW_SIZE[0], WINDOW_SIZE[1], 0, -1, 1)
+        glMatrixMode(GL_MODELVIEW)
+        glPushMatrix()
+        glLoadIdentity()
+        glDisable(GL_DEPTH_TEST)
+        glDisable(GL_LIGHTING)
+        
+        if show_help:
+            draw_help_overlay()
+        
+        draw_status_bar(font, user_text, last_status, not show_help)
+        
+        glEnable(GL_DEPTH_TEST)
+        glMatrixMode(GL_PROJECTION)
+        glPopMatrix()
+        glMatrixMode(GL_MODELVIEW)
+        glPopMatrix()
+
+        pygame.display.set_caption("Humanoid IK Commander")
         pygame.display.flip()
         clock.tick(FPS)
 

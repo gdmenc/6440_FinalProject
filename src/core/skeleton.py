@@ -50,17 +50,13 @@ class Skeleton:
         """
         self.root.reset()
 
-        # Set arms to hang down naturally
-        # Note: Geometry is mirrored, so rotation signs are swapped
         r_shoulder = self.get_joint("R_Shoulder")
         if r_shoulder:
-            # Rotate down (Z-axis roll) - Right is now on screen left
             r_shoulder.rotation[2] = 80.0
             r_shoulder.clamp_rotation()
 
         l_shoulder = self.get_joint("L_Shoulder")
         if l_shoulder:
-            # Rotate down (Z-axis roll) - Left is now on screen right
             l_shoulder.rotation[2] = -80.0
             l_shoulder.clamp_rotation()
 
@@ -96,7 +92,6 @@ class Skeleton:
         if not full_chain:
             return []
 
-        # Map effectors to their local anchors
         anchor_by_prefix = {
             "R_Hand": "R_Shoulder",
             "R_Wrist": "R_Shoulder",
@@ -114,7 +109,6 @@ class Skeleton:
             "Neck": "Chest",
         }
 
-        # Determine anchor name for this effector
         anchor_name = None
         for key, value in anchor_by_prefix.items():
             if end_effector_name.startswith(key):
@@ -128,7 +122,6 @@ class Skeleton:
         if not anchor_node:
             return full_chain
 
-        # Slice chain to start from the anchor
         try:
             start_idx = full_chain.index(anchor_node)
             return full_chain[start_idx:]

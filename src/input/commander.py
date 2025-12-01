@@ -72,9 +72,9 @@ class Commander:
             "down": np.array([0, -1, 0], dtype=np.float32),
             "lower": np.array([0, -1, 0], dtype=np.float32),
             "drop": np.array([0, -1, 0], dtype=np.float32),
-            "left": np.array([-1, 0, 0], dtype=np.float32),
-            "right": np.array([1, 0, 0], dtype=np.float32),
-            "forward": np.array([0, 0, 1], dtype=np.float32),  # Assuming Z+ is forward
+            "left": np.array([1, 0, 0], dtype=np.float32),
+            "right": np.array([-1, 0, 0], dtype=np.float32),
+            "forward": np.array([0, 0, 1], dtype=np.float32),
             "back": np.array([0, 0, -1], dtype=np.float32),
             "backward": np.array([0, 0, -1], dtype=np.float32),
         }

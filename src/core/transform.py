@@ -4,7 +4,6 @@ from numpy.typing import NDArray
 
 Mat4x4 = NDArray[np.float32]
 
-
 def get_translation_matrix(x: float, y: float, z: float) -> Mat4x4:
     """
     Returns a 4x4 Translation Matrix.

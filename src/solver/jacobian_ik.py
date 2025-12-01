@@ -42,8 +42,6 @@ class JacobianIK:
 
             J = self._compute_jacobian(chain, current_pos)
 
-            # Build inverse weight matrix (W^-1) for localized movement
-            # Higher value = more movement allowed
             weights = []
             for node in chain:
                 w = 1.0
@@ -56,14 +54,11 @@ class JacobianIK:
                     w = 0.5  # Moderate
                 elif "elbow" in name or "ankle" in name:
                     w = 0.8  # Flexible
-                # Wrist, Hand, Foot, Head default to 1.0 (Very Flexible)
                 
                 weights.extend([w, w, w])
             
             W_inv = np.diag(weights)
 
-            # Weighted DLS: dTheta = W^-1 * J^T * (J * W^-1 * J^T + lambda^2 * I)^-1 * e
-            # A = J * W^-1 * J^T
             J_weighted = J @ W_inv
             A = J_weighted @ J.T
             
