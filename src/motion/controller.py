@@ -45,6 +45,151 @@ class MotionController(ABC):
         """
         pass
 
+class WaveMotion(MotionController):
+
+    def __init__(self, skeleton: Skeleton, speed: float = 1.0):
+        super().__init__(skeleton)
+        self.speed = speed
+        self.specified_arm = None
+
+        # Motion amplitudes (in degrees)
+        self.params = {
+            "wrist_swing": 20.0,
+            "shoulder_swing": 30.0,   # Forward/back arm swing
+            "elbow_bend": 120.0,       # Elbow flexion during swing
+        }
+
+        self.cycle_duration = 1.2
+
+        self.previous_shoulder_state = 0.0
+        self.previous_elbow_state = 0.0
+        self.previous_wrist_state = 0.0
+
+    def update(self, dt: float) -> None:
+        if not self.active:
+            return
+
+        self.time += dt * self.speed
+        phase = (self.time / self.cycle_duration) * 2 * np.pi
+
+        joints = self._get_joints()
+        if not joints:
+            return
+
+        if self.specified_arm == "right":
+
+            if self.previous_shoulder_state < 30:
+                r_shoulder_swing = self.params["shoulder_swing"] * np.sin(phase + np.pi)
+                r_shoulder_swing = np.clip(r_shoulder_swing, 0, 30)
+
+                joints["r_shoulder"].rotation[1] = r_shoulder_swing
+                joints["r_shoulder"].clamp_rotation()
+
+                if r_shoulder_swing < 30 and r_shoulder_swing > 29.3:
+                    r_shoulder_swing = 30
+
+                self.previous_shoulder_state = r_shoulder_swing
+
+            elif self.previous_shoulder_state == 30 and self.previous_elbow_state < 120:
+                # Keep shoulder in raised position
+                joints["r_shoulder"].rotation[1] = 30
+                joints["r_shoulder"].clamp_rotation()
+                
+                # Smoothly bend elbow from 0 to 120 (clip to positive values only)
+                r_elbow_bend = self.params["elbow_bend"] * np.cos(phase + np.pi)
+                r_elbow_bend = np.clip(r_elbow_bend, 0, 120)
+                
+                joints["r_elbow"].rotation[1] = r_elbow_bend
+                joints["r_elbow"].clamp_rotation()
+
+                if r_elbow_bend < 120 and r_elbow_bend > 119.2:
+                    r_elbow_bend = 120
+
+                self.previous_elbow_state = r_elbow_bend
+
+            elif self.previous_shoulder_state == 30 and self.previous_elbow_state == 120:
+                # Keep shoulder and elbow in position
+                joints["r_shoulder"].rotation[1] = 30
+                joints["r_shoulder"].clamp_rotation()
+                joints["r_elbow"].rotation[1] = 120
+                joints["r_elbow"].clamp_rotation()
+                
+                # Wave the wrist
+                r_wrist_swing = -self.params["wrist_swing"] * np.sin(phase + np.pi)
+                joints["r_elbow"].rotation[2] = r_wrist_swing
+                joints["r_elbow"].clamp_rotation()
+        
+        elif self.specified_arm == "left":
+
+            if self.previous_shoulder_state < 30:
+                # Mirror: use negative values for left arm
+                l_shoulder_swing = -self.params["shoulder_swing"] * np.sin(phase)
+                l_shoulder_swing = np.clip(l_shoulder_swing, -30, 0)
+                # Track absolute value for state comparison
+                l_shoulder_abs = abs(l_shoulder_swing)
+
+                joints["l_shoulder"].rotation[1] = l_shoulder_swing
+                joints["l_shoulder"].clamp_rotation()
+
+                if l_shoulder_abs < 30 and l_shoulder_abs > 29.3:
+                    l_shoulder_abs = 30
+
+                self.previous_shoulder_state = l_shoulder_abs
+
+            elif self.previous_shoulder_state == 30 and self.previous_elbow_state < 120:
+                # Keep shoulder in raised position
+                joints["l_shoulder"].rotation[1] = -30
+                joints["l_shoulder"].clamp_rotation()
+                
+                # Smoothly bend elbow from 0 to 120 (clip to positive values only)
+                l_elbow_bend = self.params["elbow_bend"] * np.cos(phase)
+                l_elbow_bend = np.clip(l_elbow_bend, 0, 120)
+                
+                joints["l_elbow"].rotation[1] = -l_elbow_bend  # Negative for left arm
+                joints["l_elbow"].clamp_rotation()
+
+                if l_elbow_bend < 120 and l_elbow_bend > 119.2:
+                    l_elbow_bend = 120
+
+                self.previous_elbow_state = l_elbow_bend
+
+            elif self.previous_shoulder_state == 30 and self.previous_elbow_state == 120:
+                # Keep shoulder and elbow in position
+                joints["l_shoulder"].rotation[1] = -30
+                joints["l_shoulder"].clamp_rotation()
+                joints["l_elbow"].rotation[1] = -120
+                joints["l_elbow"].clamp_rotation()
+                
+                # Wave the wrist
+                l_wrist_swing = self.params["wrist_swing"] * np.sin(phase)
+                joints["l_elbow"].rotation[2] = l_wrist_swing
+                joints["l_elbow"].clamp_rotation()
+
+        self.skeleton.update()
+
+    def _get_joints(self) -> Dict[str, Optional[any]]:
+        """Retrieve all joints needed for walking animation."""
+        return {
+            "r_shoulder": self.skeleton.get_joint("R_Shoulder"),
+            "l_shoulder": self.skeleton.get_joint("L_Shoulder"),
+            "r_elbow": self.skeleton.get_joint("R_Elbow"),
+            "l_elbow": self.skeleton.get_joint("L_Elbow"),
+            "r_wrist": self.skeleton.get_joint("R_Wrist"),
+            "l_wrist": self.skeleton.get_joint("L_Wrist"),
+        }
+
+    def stop(self):
+        super().stop()
+        self.previous_shoulder_state = 0.0
+        self.previous_elbow_state = 0.0
+        self.previous_wrist_state = 0.0
+
+    def set_speed(self, speed: float):
+        self.speed = max(0.1, min(3.0, speed))
+
+    def set_arm(self, arm: str):
+        self.specified_arm = arm
+
 
 class WalkMotion(MotionController):
     """

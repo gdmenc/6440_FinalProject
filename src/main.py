@@ -15,6 +15,7 @@ from src.solver.jacobian_ik import JacobianIK
 from src.input.commander import Commander
 from src.renderer import SkeletonRenderer
 from src.motion.controller import WalkMotion
+from src.motion.controller import WaveMotion
 
 WINDOW_SIZE = (1024, 768)
 FPS = 60
@@ -31,6 +32,9 @@ HELP_TEXT = """
 ║  walk fast         Walk at 1.8x speed                        ║
 ║  walk slow         Walk at 0.5x speed                        ║
 ║  walk <number>     Walk at custom speed (e.g., walk 1.5)     ║
+║  wave l/r          Start hand waving animation for l/r hand  ║
+║  wave l/r fast     Wave l/r hand at 1.8x speed               ║
+║  wave l/r slow     Wave l/r hand at 0.5x speed               ║
 ║  stop              Stop current animation                    ║
 ║  reset             Reset skeleton to default pose            ║
 ╠══════════════════════════════════════════════════════════════╣
@@ -121,7 +125,7 @@ def draw_help_overlay():
             color = (255, 220, 100)  # Yellow for headers
         elif line.strip().startswith('─'):
             color = (100, 180, 255)  # Blue for dividers
-        elif any(cmd in line for cmd in ['walk', 'stop', 'reset', 'right', 'left', 'Ctrl+', 'F1', 'Mouse', 'Arrow']):
+        elif any(cmd in line for cmd in ['walk', 'wave', 'stop', 'reset', 'right', 'left', 'Ctrl+', 'F1', 'Mouse', 'Arrow']):
             color = (150, 255, 150)  # Green for commands
         else:
             color = (220, 220, 220)  # Light gray for regular text
@@ -409,7 +413,7 @@ def setup_scene():
         "R_Elbow",
         offset=(-2.5, 0, 0),
         parent=_r_shoulder,
-        limits={"x": (-10, 10), "y": (-150, 0), "z": (-10, 10)},
+        limits={"x": (-10, 10), "y": (0, 150), "z": (-10, 10)},
     )
 
     _r_wrist = Node(
@@ -432,7 +436,7 @@ def setup_scene():
         "L_Elbow",
         offset=(2.5, 0, 0),
         parent=_l_shoulder,
-        limits={"x": (-10, 10), "y": (0, 150), "z": (-10, 10)},
+        limits={"x": (-10, 10), "y": (-150, 0), "z": (-10, 10)},
     )
 
     _l_wrist = Node(
@@ -542,6 +546,7 @@ def main():
     font = pygame.font.SysFont("Consolas", 24)
     
     walk_motion = WalkMotion(skeleton, speed=1.0)
+    wave_motion = WaveMotion(skeleton)
 
     running = True
     user_text = ""
@@ -572,9 +577,12 @@ def main():
                         active_effector = None
                         active_target_pos = None
                         last_status = "Walking animation started"
+
                     elif cmd_lower == "stop":
                         walk_motion.stop()
+                        wave_motion.stop()
                         last_status = "Animation stopped"
+
                     elif cmd_lower.startswith("walk "):
                         speed_str = cmd_lower[5:].strip()
                         if speed_str == "fast":
@@ -590,13 +598,34 @@ def main():
                         active_effector = None
                         active_target_pos = None
                         last_status = f"Walking at speed {walk_motion.speed:.1f}x"
+
+                    elif cmd_lower.startswith("wave "):
+                        if "fast" in cmd_lower:
+                            wave_motion.set_speed(1.8)
+                            speed_idx = cmd_lower.find("fast")
+                            wave_motion.specified_arm = cmd_lower[5:speed_idx].strip()
+                        if "slow" in cmd_lower:
+                            wave_motion.set_speed(0.5)
+                            speed_idx = cmd_lower.find("slow")
+                            wave_motion.specified_arm = cmd_lower[5:speed_idx].strip()
+                        else:
+                            wave_motion.specified_arm = cmd_lower[5:].strip()
+
+                        wave_motion.start()
+                        active_effector = None
+                        active_target_pos = None
+                        last_status = f"Hand waving at speed {wave_motion.speed:.1f}x"
+
                     else:
                         result = commander.parse(user_text)
                         last_status = result.message
 
                         if result.success:
                             walk_motion.pause()
-                            
+                            wave_motion.pause()
+                            active_effector = result.effector_name
+                            active_target_pos = result.target_pos
+
                             if result.message == "Skeleton reset to default pose.":
                                 active_effector = None
                                 active_target_pos = None
@@ -679,6 +708,14 @@ def main():
         
         if walk_motion.is_active():
             walk_motion.update(dt)
+        else:
+            skeleton.update()
+
+            if active_effector and active_target_pos is not None:
+                solver.solve(skeleton, active_effector, active_target_pos)
+
+        if wave_motion.is_active():
+            wave_motion.update(dt)
         else:
             skeleton.update()
 

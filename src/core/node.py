@@ -90,15 +90,15 @@ class Node:
         """
         Enforces the joint limits.
         """
-        self.rotation[0] = np.clip(
-            self.rotation[0], self.constraints["x"][0], self.constraints["x"][1]
-        )
+        # self.rotation[0] = np.clip(
+        #     self.rotation[0], self.constraints["x"][0], self.constraints["x"][1]
+        # )
         self.rotation[1] = np.clip(
             self.rotation[1], self.constraints["y"][0], self.constraints["y"][1]
         )
-        self.rotation[2] = np.clip(
-            self.rotation[2], self.constraints["z"][0], self.constraints["z"][1]
-        )
+        # self.rotation[2] = np.clip(
+        #     self.rotation[2], self.constraints["z"][0], self.constraints["z"][1]
+        # )
 
     def reset(self) -> None:
         """
