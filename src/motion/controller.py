@@ -45,6 +45,85 @@ class MotionController(ABC):
         """
         pass
 
+class WaveMotion(MotionController):
+
+    def __init__(self, skeleton: Skeleton, speed: float = 1.0):
+        super().__init__(skeleton)
+        self.speed = speed
+        self.specified_arm = None
+
+        # Motion amplitudes (in degrees)
+        self.params = {
+            "wrist_swing": 10.0,
+            "shoulder_swing": 40.0,   # Forward/back arm swing
+            "elbow_bend": 150.0,       # Elbow flexion during swing
+        }
+
+        self.cycle_duration = 1.2
+
+    def update(self, dt: float) -> None:
+        if not self.active:
+            return
+
+        self.time += dt * self.speed
+        phase = (self.time / self.cycle_duration) * 2 * np.pi
+
+        joints = self._get_joints()
+        if not joints:
+            return
+
+        r_shoulder_swing = clip(0,180,self.params["shoulder_swing"] * np.sin(phase + np.pi))
+        l_shoulder_swing = self.params["shoulder_swing"] * np.sin(phase)
+        
+        if joints["r_shoulder"]:
+            joints["r_shoulder"].rotation[1] = r_shoulder_swing
+            joints["r_shoulder"].clamp_rotation()
+        if joints["l_shoulder"]:
+            joints["l_shoulder"].rotation[1] = l_shoulder_swing
+            joints["l_shoulder"].clamp_rotation()
+
+        # r_elbow_bend = self.params["elbow_bend"] * np.cos(phase + np.pi)
+        # l_elbow_bend = -self.params["elbow_bend"] * np.cos(phase + np.pi)
+        
+        # if joints["r_elbow"]:
+        #     joints["r_elbow"].rotation[1] = r_elbow_bend
+        #     joints["r_elbow"].clamp_rotation()
+            
+        # if joints["l_elbow"]:
+        #     joints["l_elbow"].rotation[1] = l_elbow_bend
+        #     joints["l_elbow"].clamp_rotation()
+
+        # r_wrist_swing = -self.params["wrist_swing"] * np.sin(phase + np.pi)
+        # l_wrist_swing = -self.params["wrist_swing"] * np.sin(phase)
+        
+        # if joints["r_wrist"]:
+        #     joints["r_wrist"].rotation[0] = r_wrist_swing
+        #     joints["r_wrist"].clamp_rotation()
+        # if joints["l_wrist"]:
+        #     joints["l_wrist"].rotation[0] = l_wrist_swing
+        #     joints["l_wrist"].clamp_rotation()
+
+        self.skeleton.update()
+        
+
+
+    def _get_joints(self) -> Dict[str, Optional[any]]:
+        """Retrieve all joints needed for walking animation."""
+        return {
+            "r_shoulder": self.skeleton.get_joint("R_Shoulder"),
+            "l_shoulder": self.skeleton.get_joint("L_Shoulder"),
+            "r_elbow": self.skeleton.get_joint("R_Elbow"),
+            "l_elbow": self.skeleton.get_joint("L_Elbow"),
+            "r_wrist": self.skeleton.get_joint("R_Wrist"),
+            "l_wrist": self.skeleton.get_joint("L_Wrist"),
+        }
+
+    def set_speed(self, speed: float):
+        self.speed = max(0.1, min(3.0, speed))
+
+    def set_arm(self, arm: str):
+        self.specified_arm = arm
+
 
 class WalkMotion(MotionController):
     """
