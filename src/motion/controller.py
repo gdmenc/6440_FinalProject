@@ -104,8 +104,8 @@ class WalkMotion(MotionController):
         r_knee_phase = phase - np.pi / 4  # Offset for timing
         l_knee_phase = phase + np.pi - np.pi / 4
         
-        r_knee_angle = -self.params["knee_flexion"] * max(0, np.sin(r_knee_phase))
-        l_knee_angle = -self.params["knee_flexion"] * max(0, np.sin(l_knee_phase))
+        r_knee_angle = self.params["knee_flexion"] * max(0, np.sin(r_knee_phase))
+        l_knee_angle = self.params["knee_flexion"] * max(0, np.sin(l_knee_phase))
         
         if joints["r_knee"]:
             joints["r_knee"].rotation[0] = r_knee_angle

@@ -23,7 +23,7 @@ FPS = 60
 HELP_TEXT = """
 ╔══════════════════════════════════════════════════════════════╗
 ║                    HUMANOID IK COMMANDER                     ║
-║                      Press F1 to close                       ║
+║               Press F1 or type "help" to close               ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  MOTION COMMANDS (type and press Enter)                      ║
 ║  ─────────────────────────────────────                       ║
@@ -178,6 +178,32 @@ def draw_grid():
         glVertex3f(20, 0, i)
     glEnd()
 
+def draw_axis():
+    """
+    Draws a simple axis to represent world frame.
+    """
+    size: float = 10.0
+    offset: float = 0.0
+
+    glPushAttrib(GL_ENABLE_BIT)
+    glDisable(GL_LIGHTING)
+    glDisable(GL_TEXTURE_2D)
+    glBegin(GL_LINES)
+    
+    glColor3f(1.0, 0.0, 0.0)
+    glVertex3f(-offset, 0.0, 0.0)
+    glVertex3f(size, 0.0, 0.0)
+
+    glColor3f(0.0, 1.0, 0.0)
+    glVertex3f(-offset, 0.0, 0.0)
+    glVertex3f(0.0, size, 0.0)
+
+    glColor3f(0.0, 0.0, 1.0)
+    glVertex3f(-offset, 0.0, 0.0)
+    glVertex3f(0.0, 0.0, size)
+
+    glEnd()
+    glPopAttrib()
 
 def draw_target(pos):
     """
@@ -568,14 +594,15 @@ def main():
                         result = commander.parse(user_text)
                         last_status = result.message
 
-                        if result.success and result.effector_name:
+                        if result.success:
                             walk_motion.pause()
-                            active_effector = result.effector_name
-                            active_target_pos = result.target_pos
-
+                            
                             if result.message == "Skeleton reset to default pose.":
                                 active_effector = None
                                 active_target_pos = None
+                            elif result.effector_name:
+                                active_effector = result.effector_name
+                                active_target_pos = result.target_pos
                     
                     user_text = ""
 
@@ -668,6 +695,7 @@ def main():
         glDisable(GL_LIGHTING)
         draw_grid()
         draw_target(active_target_pos)
+        draw_axis()
         
         renderer.render(skeleton.root)
 
