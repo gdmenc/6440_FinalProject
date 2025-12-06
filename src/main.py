@@ -14,7 +14,7 @@ from src.core.skeleton import Skeleton
 from src.solver.jacobian_ik import JacobianIK
 from src.input.commander import Commander
 from src.renderer import SkeletonRenderer
-from src.motion.controller import WalkMotion
+from src.motion.controller import WalkMotion, DanceMotion
 from src.motion.controller import WaveMotion
 
 WINDOW_SIZE = (1024, 768)
@@ -32,6 +32,10 @@ HELP_TEXT = """
 ║  walk fast         Walk at 1.8x speed                        ║
 ║  walk slow         Walk at 0.5x speed                        ║
 ║  walk <number>     Walk at custom speed (e.g., walk 1.5)     ║
+║  dance             Start dancing animation                   ║
+║  dance fast        Dance at 1.8x speed                       ║
+║  dance slow        Dance at 0.5x speed                       ║
+║  dance <number>    Dance at custom speed (e.g., dance 1.5)   ║
 ║  wave l/r          Start hand waving animation for l/r hand  ║
 ║  wave l/r fast     Wave l/r hand at 1.8x speed               ║
 ║  wave l/r slow     Wave l/r hand at 0.5x speed               ║
@@ -546,6 +550,7 @@ def main():
     font = pygame.font.SysFont("Consolas", 24)
     
     walk_motion = WalkMotion(skeleton, speed=1.0)
+    dance_motion = DanceMotion(skeleton, speed=1.0)
     wave_motion = WaveMotion(skeleton)
 
     running = True
@@ -573,17 +578,42 @@ def main():
                         continue
                     
                     elif cmd_lower == "walk":
+                        dance_motion.stop()
                         walk_motion.start()
                         active_effector = None
                         active_target_pos = None
                         last_status = "Walking animation started"
+                    elif cmd_lower == "dance":
+                        walk_motion.stop()
+                        dance_motion.start()
+                        active_effector = None
+                        active_target_pos = None
+                        last_status = "Dancing animation started"
 
                     elif cmd_lower == "stop":
                         walk_motion.stop()
+                        dance_motion.stop()
                         wave_motion.stop()
                         last_status = "Animation stopped"
+                    elif cmd_lower.startswith("dance "):
+                        walk_motion.stop()
+                        speed_str = cmd_lower[6:].strip()
+                        if speed_str == "fast":
+                            dance_motion.set_speed(1.8)
+                        elif speed_str == "slow":
+                            dance_motion.set_speed(0.5)
+                        else:
+                            try:
+                                dance_motion.set_speed(float(speed_str))
+                            except ValueError:
+                                pass
+                        dance_motion.start()
+                        active_effector = None
+                        active_target_pos = None
+                        last_status = f"Dancing at speed {dance_motion.speed:.1f}x"
 
                     elif cmd_lower.startswith("walk "):
+                        dance_motion.stop()
                         speed_str = cmd_lower[5:].strip()
                         if speed_str == "fast":
                             walk_motion.set_speed(1.8)
@@ -622,6 +652,7 @@ def main():
 
                         if result.success:
                             walk_motion.pause()
+                            dance_motion.pause()
                             wave_motion.pause()
                             active_effector = result.effector_name
                             active_target_pos = result.target_pos
