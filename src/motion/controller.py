@@ -89,7 +89,6 @@ class WaveMotion(MotionController):
                 t = self.time / raise_duration
                 # Smoothstep
                 t = t * t * (3 - 2 * t)
-                
                 # Shoulder Raise (Z-axis): 0 to 80 degrees (Up)
                 shoulder_target = 45.0 * t
                 # Elbow Bend (Z-axis): 0 to 90 degrees (Up/Forward)
@@ -164,6 +163,12 @@ class WaveMotion(MotionController):
             "r_wrist": self.skeleton.get_joint("R_Wrist"),
             "l_wrist": self.skeleton.get_joint("L_Wrist"),
         }
+
+    def start(self):
+        super().start()
+        self.previous_shoulder_state = 0.0
+        self.previous_elbow_state = 0.0
+        self.previous_wrist_state = 0.0
 
     def stop(self):
         super().stop()
@@ -324,3 +329,113 @@ class WalkMotion(MotionController):
         """Adjust animation speed (1.0 = normal, 2.0 = double speed)."""
         self.speed = max(0.1, min(3.0, speed))
 
+
+class DanceMotion(MotionController):
+
+    def __init__(self, skeleton: Skeleton, speed: float = 1.0):
+        super().__init__(skeleton)
+        self.speed = speed
+        self.cycle_duration = 1.5
+        
+        self.params = {
+            "hip_circle_forward": 20.0,
+            "hip_circle_side": 25.0,
+            "hip_twist": 15.0,
+            "squat_depth": 40.0,
+            "arm_circle_radius": 20.0,
+        }
+
+    def update(self, dt: float) -> None:
+        if not self.active:
+            return
+
+        self.time += dt * self.speed        
+        phase = (self.time / self.cycle_duration) * 2 * np.pi
+        
+        joints = self._get_joints()
+        if not joints:
+            return
+
+        hip_forward = self.params["hip_circle_forward"] * np.sin(phase)
+        hip_side = self.params["hip_circle_side"] * np.cos(phase)
+        hip_twist = self.params["hip_twist"] * np.sin(phase)
+        
+        if joints["spine1"]:
+            joints["spine1"].rotation[0] = hip_forward
+            joints["spine1"].rotation[1] = hip_twist
+            joints["spine1"].rotation[2] = hip_side
+            joints["spine1"].clamp_rotation()
+        
+        if joints["spine2"]:
+            joints["spine2"].rotation[0] = hip_forward * 0.5
+            joints["spine2"].rotation[1] = hip_twist * 0.5
+            joints["spine2"].rotation[2] = hip_side * 0.5
+            joints["spine2"].clamp_rotation()
+        
+        if joints["chest"]:
+            joints["chest"].rotation[0] = hip_forward * 0.2
+            joints["chest"].rotation[2] = hip_side * 0.2
+            joints["chest"].clamp_rotation()
+
+        squat_phase = phase * 2
+        squat_amount = self.params["squat_depth"] * (np.sin(squat_phase) + 1.0) / 2.0
+        
+        if joints["r_hip"]:
+            joints["r_hip"].rotation[0] = squat_amount * 0.4
+            joints["r_hip"].clamp_rotation()
+        if joints["l_hip"]:
+            joints["l_hip"].rotation[0] = squat_amount * 0.4
+            joints["l_hip"].clamp_rotation()
+        
+        if joints["r_knee"]:
+            joints["r_knee"].rotation[0] = -squat_amount
+            joints["r_knee"].clamp_rotation()
+        if joints["l_knee"]:
+            joints["l_knee"].rotation[0] = -squat_amount
+            joints["l_knee"].clamp_rotation()
+
+        circle_x = self.params["arm_circle_radius"] * np.sin(phase)
+        circle_z = self.params["arm_circle_radius"] * np.cos(phase)
+        
+        if joints["r_shoulder"]:
+            joints["r_shoulder"].rotation[0] = circle_x
+            joints["r_shoulder"].rotation[2] = -70.0 + circle_z
+            joints["r_shoulder"].clamp_rotation()
+        
+        if joints["l_shoulder"]:
+            joints["l_shoulder"].rotation[0] = circle_x
+            joints["l_shoulder"].rotation[2] = 70.0 - circle_z
+            joints["l_shoulder"].clamp_rotation()
+
+        if joints["r_elbow"]:
+            joints["r_elbow"].rotation[1] = -20.0
+            joints["r_elbow"].clamp_rotation()
+        if joints["l_elbow"]:
+            joints["l_elbow"].rotation[1] = 20.0
+            joints["l_elbow"].clamp_rotation()
+
+        if joints["neck"]:
+            joints["neck"].rotation[0] = -hip_forward * 0.4
+            joints["neck"].rotation[2] = -hip_side * 0.4
+            joints["neck"].clamp_rotation()
+
+        self.skeleton.update()
+
+    def _get_joints(self) -> Dict[str, Optional[any]]:
+        return {
+            "spine1": self.skeleton.get_joint("Spine1"),
+            "spine2": self.skeleton.get_joint("Spine2"),
+            "chest": self.skeleton.get_joint("Chest"),
+            "neck": self.skeleton.get_joint("Neck"),
+            "r_shoulder": self.skeleton.get_joint("R_Shoulder"),
+            "l_shoulder": self.skeleton.get_joint("L_Shoulder"),
+            "r_elbow": self.skeleton.get_joint("R_Elbow"),
+            "l_elbow": self.skeleton.get_joint("L_Elbow"),
+            "r_knee": self.skeleton.get_joint("R_Knee"),
+            "l_knee": self.skeleton.get_joint("L_Knee"),
+            "r_hip": self.skeleton.get_joint("R_Hip"),
+            "l_hip": self.skeleton.get_joint("L_Hip")
+        }
+
+    def set_speed(self, speed: float) -> None:
+        self.speed = max(0.1, min(3.0, speed))
