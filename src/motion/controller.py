@@ -388,10 +388,10 @@ class DanceMotion(MotionController):
             joints["l_hip"].clamp_rotation()
         
         if joints["r_knee"]:
-            joints["r_knee"].rotation[0] = -squat_amount
+            joints["r_knee"].rotation[0] = squat_amount
             joints["r_knee"].clamp_rotation()
         if joints["l_knee"]:
-            joints["l_knee"].rotation[0] = -squat_amount
+            joints["l_knee"].rotation[0] = squat_amount
             joints["l_knee"].clamp_rotation()
 
         circle_x = self.params["arm_circle_radius"] * np.sin(phase)
