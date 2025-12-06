@@ -71,99 +71,85 @@ class WaveMotion(MotionController):
 
         self.time += dt * self.speed
         phase = (self.time / self.cycle_duration) * 2 * np.pi
-
+        
         joints = self._get_joints()
         if not joints:
             return
 
-        if self.specified_arm in ("right", "r"):
-
-            if self.previous_shoulder_state < 30:
-                r_shoulder_swing = self.params["shoulder_swing"] * np.sin(phase + np.pi)
-                r_shoulder_swing = np.clip(r_shoulder_swing, 0, 30)
-
-                joints["r_shoulder"].rotation[1] = r_shoulder_swing
-                joints["r_shoulder"].clamp_rotation()
-
-                if r_shoulder_swing < 30 and r_shoulder_swing > 29.3:
-                    r_shoulder_swing = 30
-
-                self.previous_shoulder_state = r_shoulder_swing
-
-            elif self.previous_shoulder_state == 30 and self.previous_elbow_state < 120:
-                # Keep shoulder in raised position
-                joints["r_shoulder"].rotation[1] = 30
-                joints["r_shoulder"].clamp_rotation()
+        if self.specified_arm == "right":
+            # State Machine: Raise (0.0 - 1.0s) -> Wave (1.0s+)
+            raise_duration = 1.0
+            
+            shoulder_target = 0.0
+            elbow_target = 0.0
+            wrist_rot = 0.0
+            
+            # Phase 1: Raise Arm
+            if self.time < raise_duration:
+                t = self.time / raise_duration
+                # Smoothstep
+                t = t * t * (3 - 2 * t)
+                # Shoulder Raise (Z-axis): 0 to 80 degrees (Up)
+                shoulder_target = 45.0 * t
+                # Elbow Bend (Z-axis): 0 to 90 degrees (Up/Forward)
+                elbow_target = 120.0 * t
                 
-                # Smoothly bend elbow from 0 to 120 (clip to positive values only)
-                r_elbow_bend = self.params["elbow_bend"] * np.cos(phase + np.pi)
-                r_elbow_bend = np.clip(r_elbow_bend, 0, 120)
+            else:
+                # Phase 2: Wave Forever
+                shoulder_target = 45.0
+                elbow_target = 120.0
                 
-                joints["r_elbow"].rotation[1] = r_elbow_bend
-                joints["r_elbow"].clamp_rotation()
+                # Wave logic
+                wave_t = (self.time - raise_duration)
+                # Oscillate forearm (Y-axis twist or X-axis wave)
+                # User said "elbow side to side", implying forearm rotation
+                wrist_rot = self.params["wrist_swing"] * np.sin(wave_t * 8.0)
 
-                if r_elbow_bend < 120 and r_elbow_bend > 119.2:
-                    r_elbow_bend = 120
+            # Apply rotations
+            # r_shoulder Z-axis (2) is Up/Down (Abduction)
+            joints["r_shoulder"].rotation[1] = shoulder_target
+            # r_shoulder Y-axis (1) - keep 0 (no forward/inward swing)
+            # joints["r_shoulder"].rotation[1] = 0.0
+            joints["r_shoulder"].clamp_rotation()
+            
+            # r_elbow Z-axis (2) is flexion
+            joints["r_elbow"].rotation[1] = elbow_target
+            # r_elbow Y-axis (1) is wave (side-to-side/twist)
+            joints["r_elbow"].rotation[2] = wrist_rot 
+            joints["r_elbow"].clamp_rotation()
 
-                self.previous_elbow_state = r_elbow_bend
-
-            elif self.previous_shoulder_state == 30 and self.previous_elbow_state == 120:
-                # Keep shoulder and elbow in position
-                joints["r_shoulder"].rotation[1] = 30
-                joints["r_shoulder"].clamp_rotation()
-                joints["r_elbow"].rotation[1] = 120
-                joints["r_elbow"].clamp_rotation()
+        elif self.specified_arm == "left":
+            # State Machine: Raise (0.0 - 1.0s) -> Wave (1.0s+)
+            raise_duration = 1.0
+            
+            shoulder_target = 0.0
+            elbow_target = 0.0
+            wrist_rot = 0.0
+            
+            if self.time < raise_duration:
+                t = self.time / raise_duration
+                t = t * t * (3 - 2 * t)
                 
-                # Wave the wrist
-                r_wrist_swing = -self.params["wrist_swing"] * np.sin(phase + np.pi)
-                joints["r_elbow"].rotation[2] = r_wrist_swing
-                joints["r_elbow"].clamp_rotation()
-        
-        elif self.specified_arm in ("left", "l"):
-
-            if self.previous_shoulder_state < 30:
-                # Mirror: use negative values for left arm
-                l_shoulder_swing = -self.params["shoulder_swing"] * np.sin(phase)
-                l_shoulder_swing = np.clip(l_shoulder_swing, -30, 0)
-                # Track absolute value for state comparison
-                l_shoulder_abs = abs(l_shoulder_swing)
-
-                joints["l_shoulder"].rotation[1] = l_shoulder_swing
-                joints["l_shoulder"].clamp_rotation()
-
-                if l_shoulder_abs < 30 and l_shoulder_abs > 29.3:
-                    l_shoulder_abs = 30
-
-                self.previous_shoulder_state = l_shoulder_abs
-
-            elif self.previous_shoulder_state == 30 and self.previous_elbow_state < 120:
-                # Keep shoulder in raised position
-                joints["l_shoulder"].rotation[1] = -30
-                joints["l_shoulder"].clamp_rotation()
+                # Shoulder Raise (Z-axis): 0 to -80 degrees (Up for Left)
+                shoulder_target = -45.0 * t
+                # Elbow Bend (Z-axis): 0 to 90 degrees
+                elbow_target = -120.0 * t
                 
-                # Smoothly bend elbow from 0 to 120 (clip to positive values only)
-                l_elbow_bend = self.params["elbow_bend"] * np.cos(phase)
-                l_elbow_bend = np.clip(l_elbow_bend, 0, 120)
+            else:
+                shoulder_target = -45.0
+                elbow_target = -120.0
                 
-                joints["l_elbow"].rotation[1] = -l_elbow_bend  # Negative for left arm
-                joints["l_elbow"].clamp_rotation()
+                wave_t = (self.time - raise_duration)
+                wrist_rot = -self.params["wrist_swing"] * np.sin(wave_t * 8.0)
 
-                if l_elbow_bend < 120 and l_elbow_bend > 119.2:
-                    l_elbow_bend = 120
-
-                self.previous_elbow_state = l_elbow_bend
-
-            elif self.previous_shoulder_state == 30 and self.previous_elbow_state == 120:
-                # Keep shoulder and elbow in position
-                joints["l_shoulder"].rotation[1] = -30
-                joints["l_shoulder"].clamp_rotation()
-                joints["l_elbow"].rotation[1] = -120
-                joints["l_elbow"].clamp_rotation()
-                
-                # Wave the wrist
-                l_wrist_swing = self.params["wrist_swing"] * np.sin(phase)
-                joints["l_elbow"].rotation[2] = l_wrist_swing
-                joints["l_elbow"].clamp_rotation()
+            # Apply rotations
+            joints["l_shoulder"].rotation[1] = shoulder_target
+            # joints["l_shoulder"].rotation[1] = 0.0
+            joints["l_shoulder"].clamp_rotation()
+            
+            joints["l_elbow"].rotation[1] = elbow_target
+            joints["l_elbow"].rotation[2] = wrist_rot
+            joints["l_elbow"].clamp_rotation()
 
         self.skeleton.update()
 
