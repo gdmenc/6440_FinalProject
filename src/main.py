@@ -11,9 +11,11 @@ sys.path.insert(0, str(project_root))
 
 from src.core.node import Node
 from src.core.skeleton import Skeleton
+from src.core.mesh_skeleton import MeshSkeleton, MeshNode
 from src.solver.jacobian_ik import JacobianIK
 from src.input.commander import Commander
 from src.renderer import SkeletonRenderer
+from src.mesh_renderer import MeshRenderer
 from src.motion.controller import WalkMotion
 from src.motion.controller import WaveMotion
 
@@ -56,6 +58,12 @@ HELP_TEXT = """
 ║    left foot forward 3                                       ║
 ║    head left                                                 ║
 ╠══════════════════════════════════════════════════════════════╣
+║  MESH COMMANDS (type and press Enter)                        ║
+║  ─────────────────────────────────────                       ║
+║  load model1       Load Model1 mesh (1-4 available)          ║
+║  load model2       Load Model2 mesh                          ║
+║  unload            Unload mesh, return to default skeleton   ║
+╠══════════════════════════════════════════════════════════════╣
 ║  CAMERA CONTROLS                                             ║
 ║  ─────────────────────────────────────                       ║
 ║  Left Mouse Drag   Rotate camera                             ║
@@ -63,6 +71,7 @@ HELP_TEXT = """
 ║  Arrow Keys        Pan camera                                ║
 ║  Ctrl+R            Reset camera                              ║
 ║  Ctrl+V            Toggle wireframe/capsule view             ║
+║  Ctrl+B            Toggle mesh/skeleton view                 ║
 ║  F1                Toggle this help screen                   ║
 ╚══════════════════════════════════════════════════════════════╝
 """
@@ -543,10 +552,15 @@ def main():
     solver = JacobianIK(damping=0.5, step_size=0.05, max_iterations=5, threshold=0.1)
     commander = Commander(skeleton)
     renderer = SkeletonRenderer()
+    mesh_renderer = MeshRenderer()
     font = pygame.font.SysFont("Consolas", 24)
     
     walk_motion = WalkMotion(skeleton, speed=1.0)
     wave_motion = WaveMotion(skeleton)
+    
+    # Mesh skeleton (loaded on demand)
+    mesh_skeleton = None
+    show_mesh = False  # Toggle between skeleton and mesh view
 
     running = True
     user_text = ""
@@ -616,6 +630,31 @@ def main():
                         active_target_pos = None
                         last_status = f"Hand waving at speed {wave_motion.speed:.1f}x"
 
+                    elif cmd_lower.startswith("load "):
+                        # Load mesh model command
+                        model_name = cmd_lower[5:].strip()
+                        model_map = {
+                            "model1": "assests/Model1.skel",
+                            "model2": "assests/Model2.skel",
+                            "model3": "assests/Model3.skel",
+                            "model4": "assests/Model4.skel",
+                        }
+                        if model_name in model_map:
+                            try:
+                                mesh_skeleton = MeshSkeleton.from_files(model_map[model_name])
+                                mesh_skeleton.reset_pose()
+                                show_mesh = True
+                                last_status = f"Loaded {model_name.capitalize()} mesh"
+                            except Exception as e:
+                                last_status = f"Failed to load mesh: {str(e)[:30]}"
+                        else:
+                            last_status = f"Unknown model: {model_name} (try model1-model4)"
+                    
+                    elif cmd_lower == "unload":
+                        mesh_skeleton = None
+                        show_mesh = False
+                        last_status = "Mesh unloaded, using default skeleton"
+
                     else:
                         result = commander.parse(user_text)
                         last_status = result.message
@@ -665,6 +704,17 @@ def main():
                 ):
                     mode = renderer.toggle_mode()
                     last_status = f"Visualization: {mode.capitalize()}"
+
+                # Toggle mesh/skeleton view with Ctrl+B
+                elif (
+                    event.key == pygame.K_b and pygame.key.get_mods() & pygame.KMOD_CTRL
+                ):
+                    if mesh_skeleton is not None:
+                        show_mesh = not show_mesh
+                        view_mode = "Mesh" if show_mesh else "Skeleton"
+                        last_status = f"View mode: {view_mode}"
+                    else:
+                        last_status = "No mesh loaded. Use 'load model1' first."
 
                 # Toggle help overlay with F1
                 elif event.key == pygame.K_F1:
@@ -722,6 +772,50 @@ def main():
             if active_effector and active_target_pos is not None:
                 solver.solve(skeleton, active_effector, active_target_pos)
 
+        # Sync rotations from main skeleton to mesh skeleton
+        if mesh_skeleton is not None:
+            # Map joint names: our naming -> C++ mesh naming
+            name_mapping = {
+                "Root": "Root",
+                "Spine1": "Chest",
+                "Spine2": "Waist",
+                "Chest": "Neck",  # Our Chest maps to their Neck position in hierarchy
+                "Neck": "Neck",
+                "R_Hip": "Right hip",
+                "R_Knee": "Right knee",
+                "R_Ankle": "Right foot",
+                "L_Hip": "Left hip",
+                "L_Knee": "Left knee",
+                "L_Ankle": "Left foot",
+                "R_Shoulder": "Right shoulder",
+                "R_Elbow": "Right elbow",
+                "L_Shoulder": "Left shoulder",
+                "L_Elbow": "Left elbow",
+            }
+            
+            for joint_name, joint in skeleton.joints_map.items():
+                mesh_name = name_mapping.get(joint_name, joint_name)
+                mesh_joint = mesh_skeleton.get_joint(mesh_name)
+                if mesh_joint is not None:
+                    rot = joint.rotation.copy()
+                    if joint_name in ["R_Shoulder", "L_Shoulder", "R_Elbow", "L_Elbow"]:
+                        orig_y = rot[1]
+                        orig_z = rot[0]
+                        rot[1] = orig_z
+                        rot[0] = -orig_y
+                    if joint_name in ["L_Shoulder", "L_Elbow"]:
+                        rot[1] = -rot[1]
+                        rot[0] = -rot[0]
+                        rot[2] = rot[2]
+
+                    if joint_name == "R_Shoulder":
+                        rot[2] -= 80  # Rotate down (around Z)
+                    elif joint_name == "L_Shoulder":
+                        rot[2] += 80  # Rotate down (around Z)
+                    
+                    mesh_joint.rotation = rot
+            mesh_skeleton.update()
+
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         glLoadIdentity()
 
@@ -734,7 +828,11 @@ def main():
         draw_target(active_target_pos)
         draw_axis()
         
-        renderer.render(skeleton.root)
+        # Render mesh or skeleton based on current view mode
+        if show_mesh and mesh_skeleton is not None:
+            mesh_renderer.render(mesh_skeleton)
+        else:
+            renderer.render(skeleton.root)
 
         glMatrixMode(GL_PROJECTION)
         glPushMatrix()
