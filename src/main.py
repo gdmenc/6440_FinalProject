@@ -579,12 +579,14 @@ def main():
                     
                     elif cmd_lower == "walk":
                         dance_motion.stop()
+                        wave_motion.stop()
                         walk_motion.start()
                         active_effector = None
                         active_target_pos = None
                         last_status = "Walking animation started"
                     elif cmd_lower == "dance":
                         walk_motion.stop()
+                        wave_motion.stop()
                         dance_motion.start()
                         active_effector = None
                         active_target_pos = None
@@ -597,6 +599,7 @@ def main():
                         last_status = "Animation stopped"
                     elif cmd_lower.startswith("dance "):
                         walk_motion.stop()
+                        wave_motion.stop()
                         speed_str = cmd_lower[6:].strip()
                         if speed_str == "fast":
                             dance_motion.set_speed(1.8)
@@ -614,6 +617,7 @@ def main():
 
                     elif cmd_lower.startswith("walk "):
                         dance_motion.stop()
+                        wave_motion.stop()
                         speed_str = cmd_lower[5:].strip()
                         if speed_str == "fast":
                             walk_motion.set_speed(1.8)
@@ -630,11 +634,13 @@ def main():
                         last_status = f"Walking at speed {walk_motion.speed:.1f}x"
 
                     elif cmd_lower.startswith("wave "):
+                        walk_motion.stop()
+                        dance_motion.stop()
                         if "fast" in cmd_lower:
                             wave_motion.set_speed(1.8)
                             speed_idx = cmd_lower.find("fast")
                             wave_motion.specified_arm = cmd_lower[5:speed_idx].strip()
-                        if "slow" in cmd_lower:
+                        elif "slow" in cmd_lower:
                             wave_motion.set_speed(0.5)
                             speed_idx = cmd_lower.find("slow")
                             wave_motion.specified_arm = cmd_lower[5:speed_idx].strip()
@@ -739,13 +745,9 @@ def main():
         
         if walk_motion.is_active():
             walk_motion.update(dt)
-        else:
-            skeleton.update()
-
-            if active_effector and active_target_pos is not None:
-                solver.solve(skeleton, active_effector, active_target_pos)
-
-        if wave_motion.is_active():
+        elif dance_motion.is_active():
+            dance_motion.update(dt)
+        elif wave_motion.is_active():
             wave_motion.update(dt)
         else:
             skeleton.update()

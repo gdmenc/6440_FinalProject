@@ -76,7 +76,7 @@ class WaveMotion(MotionController):
         if not joints:
             return
 
-        if self.specified_arm == "right":
+        if self.specified_arm in ("right", "r"):
 
             if self.previous_shoulder_state < 30:
                 r_shoulder_swing = self.params["shoulder_swing"] * np.sin(phase + np.pi)
@@ -119,7 +119,7 @@ class WaveMotion(MotionController):
                 joints["r_elbow"].rotation[2] = r_wrist_swing
                 joints["r_elbow"].clamp_rotation()
         
-        elif self.specified_arm == "left":
+        elif self.specified_arm in ("left", "l"):
 
             if self.previous_shoulder_state < 30:
                 # Mirror: use negative values for left arm
@@ -177,6 +177,12 @@ class WaveMotion(MotionController):
             "r_wrist": self.skeleton.get_joint("R_Wrist"),
             "l_wrist": self.skeleton.get_joint("L_Wrist"),
         }
+
+    def start(self):
+        super().start()
+        self.previous_shoulder_state = 0.0
+        self.previous_elbow_state = 0.0
+        self.previous_wrist_state = 0.0
 
     def stop(self):
         super().stop()
