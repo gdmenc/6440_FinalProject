@@ -126,8 +126,8 @@ def draw_help_overlay():
     overlay.fill((0, 0, 0, 200))  # Dark semi-transparent background
     
     lines = HELP_TEXT.strip().split('\n')
-    y_offset = 60
-    line_height = 15
+    y_offset = 30
+    line_height = 13
     
     help_font = pygame.font.SysFont("Consolas", 14)
     
