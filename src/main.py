@@ -38,9 +38,9 @@ HELP_TEXT = """
 ║  dance fast        Dance at 1.8x speed                       ║
 ║  dance slow        Dance at 0.5x speed                       ║
 ║  dance <number>    Dance at custom speed (e.g., dance 1.5)   ║
-║  wave l/r          Start hand waving animation for l/r hand  ║
-║  wave l/r fast     Wave l/r hand at 1.8x speed               ║
-║  wave l/r slow     Wave l/r hand at 0.5x speed               ║
+║  wave left/right   Start hand waving animation for l/r hand  ║
+║  wave left/right fast  Wave hand at 1.8x speed               ║
+║  wave left/right slow  Wave hand at 0.5x speed               ║
 ║  stop              Stop current animation                    ║
 ║  reset             Reset skeleton to default pose            ║
 ╠══════════════════════════════════════════════════════════════╣
